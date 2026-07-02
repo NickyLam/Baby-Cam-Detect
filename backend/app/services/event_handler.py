@@ -174,8 +174,7 @@ class EventHandler:
                 ExtraArgs={"ContentType": "video/mp4"},
             )
 
-            url = f"https://{settings.s3_bucket_name}.s3.{settings.aws_region}.amazonaws.com/{key}"
-            return url
+            return self._generate_signed_url(s3, key)
 
         except Exception as e:
             logger.error(f"S3 upload error: {e}")
@@ -202,12 +201,19 @@ class EventHandler:
                 ContentType=content_type,
             )
 
-            url = f"https://{settings.s3_bucket_name}.s3.{settings.aws_region}.amazonaws.com/{key}"
-            return url
+            return self._generate_signed_url(s3, key)
 
         except Exception as e:
             logger.error(f"S3 bytes upload error: {e}")
             return None
+
+    def _generate_signed_url(self, s3, key: str) -> str:
+        """Create a short-lived URL for private event media."""
+        return s3.generate_presigned_url(
+            "get_object",
+            Params={"Bucket": settings.s3_bucket_name, "Key": key},
+            ExpiresIn=settings.s3_presigned_url_expire_seconds,
+        )
 
     async def _persist_event(
         self,

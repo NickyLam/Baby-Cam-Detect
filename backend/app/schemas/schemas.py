@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
 # ===== Auth Schemas =====
@@ -28,14 +28,13 @@ class TokenRefresh(BaseModel):
 
 
 class UserResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     email: str
     name: Optional[str]
     timezone: str
     created_at: datetime
-
-    class Config:
-        from_attributes = True
 
 
 # ===== Camera Schemas =====
@@ -44,27 +43,39 @@ class CameraCreate(BaseModel):
     rtsp_url: str = Field(..., min_length=7)
 
 
+class CameraProbeRequest(BaseModel):
+    rtsp_url: str = Field(..., min_length=7)
+
+
+class CameraProbeResponse(BaseModel):
+    ok: bool
+    code: str
+    message: str
+    redacted_url: str
+
+
 class CameraUpdate(BaseModel):
     name: Optional[str] = None
     rtsp_url: Optional[str] = None
 
 
 class CameraResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     name: str
-    rtsp_url: str
+    rtsp_url_redacted: str
     status: str
     resolution: Optional[str]
     last_frame_at: Optional[datetime]
     error_message: Optional[str]
     created_at: datetime
 
-    class Config:
-        from_attributes = True
-
 
 # ===== Event Schemas =====
 class EventResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     camera_id: UUID
     event_type: str
@@ -76,9 +87,6 @@ class EventResponse(BaseModel):
     frames_analyzed: int
     dismissed: bool
     created_at: datetime
-
-    class Config:
-        from_attributes = True
 
 
 class EventSummary(BaseModel):
@@ -106,15 +114,14 @@ class NotificationPreferenceUpdate(BaseModel):
 
 
 class NotificationPreferenceResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     safety_alerts: bool
     milestone_alerts: bool
     quiet_start: Optional[str]
     quiet_end: Optional[str]
     cooldown_minutes: int
     sensitivity: str
-
-    class Config:
-        from_attributes = True
 
 
 # ===== Analysis Schemas =====

@@ -8,9 +8,26 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.security import get_current_user_id
 from app.models import Camera
-from app.schemas import CameraCreate, CameraUpdate, CameraResponse
+from app.schemas import (
+    CameraCreate,
+    CameraProbeRequest,
+    CameraProbeResponse,
+    CameraUpdate,
+    CameraResponse,
+)
+from app.services.camera_connector import RTSPCameraConnector
 
 router = APIRouter(prefix="/cameras", tags=["cameras"])
+
+
+@router.post("/probe", response_model=CameraProbeResponse)
+async def probe_camera(
+    data: CameraProbeRequest,
+    user_id: str = Depends(get_current_user_id),
+):
+    """Validate a camera source without storing it."""
+    result = RTSPCameraConnector().validate_source(data.rtsp_url)
+    return CameraProbeResponse(**result.__dict__)
 
 
 @router.post("/", response_model=CameraResponse, status_code=status.HTTP_201_CREATED)
@@ -19,6 +36,10 @@ async def create_camera(
     user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
 ):
+    probe = RTSPCameraConnector().validate_source(data.rtsp_url)
+    if not probe.ok:
+        raise HTTPException(status_code=400, detail=probe.message)
+
     camera = Camera(
         user_id=UUID(user_id),
         name=data.name,
@@ -74,6 +95,9 @@ async def update_camera(
     if data.name is not None:
         camera.name = data.name
     if data.rtsp_url is not None:
+        probe = RTSPCameraConnector().validate_source(data.rtsp_url)
+        if not probe.ok:
+            raise HTTPException(status_code=400, detail=probe.message)
         camera.rtsp_url = data.rtsp_url
 
     await db.flush()

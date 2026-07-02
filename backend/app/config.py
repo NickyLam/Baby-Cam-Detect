@@ -1,11 +1,15 @@
-from pydantic_settings import BaseSettings
 from functools import lru_cache
+
+from pydantic import model_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+
     # App
     app_name: str = "Baby-Cam-Detect"
-    debug: bool = False
+    debug: bool = True
     api_prefix: str = "/api/v1"
 
     # Database
@@ -41,6 +45,7 @@ class Settings(BaseSettings):
     aws_secret_access_key: str = ""
     aws_region: str = "us-east-1"
     s3_bucket_name: str = "babycam-clips"
+    s3_presigned_url_expire_seconds: int = 3600
 
     # Stream Pipeline
     frame_sample_interval: float = 3.0  # seconds between LLM analysis frames
@@ -56,9 +61,11 @@ class Settings(BaseSettings):
     # Expo Push
     expo_push_url: str = "https://exp.host/--/api/v2/push/send"
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
+    @model_validator(mode="after")
+    def validate_production_secrets(self):
+        if not self.debug and self.secret_key == "change-me-in-production":
+            raise ValueError("SECRET_KEY must be set before running with DEBUG=false")
+        return self
 
 
 @lru_cache()

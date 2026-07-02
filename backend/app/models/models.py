@@ -9,6 +9,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
+from app.core.url_security import redact_url_credentials
 
 
 class User(Base):
@@ -44,6 +45,11 @@ class Camera(Base):
     # Relationships
     user = relationship("User", back_populates="cameras")
     events = relationship("Event", back_populates="camera", cascade="all, delete-orphan")
+
+    @property
+    def rtsp_url_redacted(self) -> str:
+        """Return the RTSP URL without exposing embedded credentials."""
+        return redact_url_credentials(self.rtsp_url)
 
 
 class Event(Base):

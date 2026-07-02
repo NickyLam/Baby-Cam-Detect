@@ -24,6 +24,8 @@ class CameraStream:
         self.camera_id = camera_id
         self.rtsp_url = rtsp_url
         self.user_id = user_id
+        self.analyzer = FrameAnalyzer()
+        self.event_handler = EventHandler()
         self.buffer = RingBuffer(
             max_duration_seconds=settings.buffer_duration, fps=5
         )
@@ -33,6 +35,7 @@ class CameraStream:
         self._last_sample_time: float = 0
         self._reconnect_attempts: int = 0
         self._max_reconnect_attempts: int = 10
+        self._analysis_lock = asyncio.Lock()
 
     async def start(self):
         """Start the stream capture and analysis loop."""
@@ -50,6 +53,7 @@ class CameraStream:
         if self._task:
             self._task.cancel()
             self._task = None
+        self.analyzer.clear_pending(self.camera_id)
         self.buffer.clear()
         logger.info(f"Stopped stream for camera {self.camera_id}")
 
@@ -140,30 +144,28 @@ class CameraStream:
 
     async def _analyze_frame(self, frame_jpeg: bytes):
         """Send frame for LLM analysis."""
-        try:
-            # Resize for cost efficiency
-            resized = self._resize_frame(frame_jpeg, max_dim=768)
+        async with self._analysis_lock:
+            try:
+                # Resize for cost efficiency
+                resized = self._resize_frame(frame_jpeg, max_dim=768)
 
-            analyzer = FrameAnalyzer()
+                # Check if there's a pending confirmation first
+                if self.analyzer.has_pending_confirmation(self.camera_id):
+                    result = await self.analyzer.confirm_with_frames(self.camera_id, resized)
+                else:
+                    result = await self.analyzer.analyze_single_frame(self.camera_id, resized)
 
-            # Check if there's a pending confirmation first
-            if analyzer.has_pending_confirmation(self.camera_id):
-                result = await analyzer.confirm_with_frames(self.camera_id, resized)
-            else:
-                result = await analyzer.analyze_single_frame(self.camera_id, resized)
+                if result and result.status == "alert":
+                    # Trigger event handling
+                    await self.event_handler.handle_event(
+                        camera_id=self.camera_id,
+                        user_id=self.user_id,
+                        result=result,
+                        buffer=self.buffer,
+                    )
 
-            if result and result.status == "alert":
-                # Trigger event handling
-                event_handler = EventHandler()
-                await event_handler.handle_event(
-                    camera_id=self.camera_id,
-                    user_id=self.user_id,
-                    result=result,
-                    buffer=self.buffer,
-                )
-
-        except Exception as e:
-            logger.error(f"Analysis task error for camera {self.camera_id}: {e}")
+            except Exception as e:
+                logger.error(f"Analysis task error for camera {self.camera_id}: {e}")
 
     def _resize_frame(self, frame_jpeg: bytes, max_dim: int = 768) -> bytes:
         """Resize frame for cost-efficient LLM analysis."""
